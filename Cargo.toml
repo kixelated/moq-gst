@@ -15,7 +15,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 
 [dependencies]
 moq-transport = { path = "../moq-rs/moq-transport", version = "0.5" }
-moq-native = { path = "../moq-rs/moq-native", version = "0.1" }
+moq-native = { path = "../moq-rs/moq-native", version = "0.2" }
 moq-pub = { path = "../moq-rs/moq-pub", version = "0.5" }
 
 gst = { package = "gstreamer", version = "0.22" }

@@ -755,7 +755,9 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4855c13278205dfd33c31a3d1b99d2931077f3d110acd14e1e6587d466a33d0b"
 dependencies = [
  "anyhow",
  "clap",
@@ -778,6 +780,8 @@ dependencies = [
 [[package]]
 name = "moq-pub"
 version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fee575567925e6407f35c2a9086eceb2336a77a0ca0f301ae38c8b1d64acc79"
 dependencies = [
  "anyhow",
  "bytes",
@@ -797,7 +801,9 @@ dependencies = [
 
 [[package]]
 name = "moq-transport"
-version = "0.5.0"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d68c5f94e9ef56b4bfcec60f5b0a59df661cfe6f5bade2a490144c0a921127c"
 dependencies = [
  "bytes",
  "futures",

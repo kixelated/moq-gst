@@ -5,6 +5,7 @@ use gst::subclass::prelude::*;
 use gst_base::subclass::prelude::*;
 
 use moq_native::quic;
+use moq_native::tls;
 use moq_transport::serve::Tracks;
 use moq_transport::serve::TracksReader;
 use once_cell::sync::Lazy;
@@ -23,6 +24,7 @@ pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 struct Settings {
 	pub url: Option<String>,
 	pub namespace: Option<String>,
+	pub tls_disable_verify: bool,
 }
 
 #[derive(Default)]
@@ -60,6 +62,11 @@ impl ObjectImpl for MoqSink {
 					.nick("Namespace")
 					.blurb("Publish the broadcast under the given namespace")
 					.build(),
+				glib::ParamSpecBoolean::builder("tls-disable-verify")
+					.nick("TLS disable verify")
+					.blurb("Disable TLS verification")
+					.default_value(false)
+					.build(),
 			]
 		});
 		PROPERTIES.as_ref()
@@ -71,6 +78,7 @@ impl ObjectImpl for MoqSink {
 		match pspec.name() {
 			"url" => settings.url = Some(value.get().unwrap()),
 			"namespace" => settings.namespace = Some(value.get().unwrap()),
+			"tls-disable-verify" => settings.tls_disable_verify = value.get().unwrap(),
 			_ => unimplemented!(),
 		}
 	}
@@ -81,6 +89,7 @@ impl ObjectImpl for MoqSink {
 		match pspec.name() {
 			"url" => settings.url.to_value(),
 			"namespace" => settings.namespace.to_value(),
+			"tls-disable-verify" => settings.tls_disable_verify.to_value(),
 			_ => unimplemented!(),
 		}
 	}
@@ -160,7 +169,14 @@ impl MoqSink {
 		let url = url.parse().context("invalid URL")?;
 
 		// TODO support TLS certs and other options
-		let config = quic::Args::default().load()?;
+		let config = quic::Args {
+			bind: "[::]:0".parse().unwrap(),
+			tls: tls::Args {
+				disable_verify: settings.tls_disable_verify,
+				..Default::default()
+			},
+		}
+		.load()?;
 		let client = quic::Endpoint::new(config)?.client;
 
 		let session = Session {

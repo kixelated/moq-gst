@@ -16,7 +16,7 @@ categories = ["multimedia", "network-programming", "web-programming"]
 [dependencies]
 moq-transport = "0.5"
 moq-native = "0.2"
-moq-pub = "0.5"
+moq-pub = "0.6"
 
 gst = { package = "gstreamer", version = "0.22" }
 gst-base = { package = "gstreamer-base", version = "0.22" }

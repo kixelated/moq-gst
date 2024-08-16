@@ -19,6 +19,10 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # We need gstreamer installed to compile this repo
+      - name: Setup GStreamer
+        uses: blinemedical/setup-gstreamer@1.0
+
       # Make sure u guys don't write bad code
       - run: cargo test --verbose
       - run: cargo clippy --no-deps

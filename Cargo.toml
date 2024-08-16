@@ -14,9 +14,9 @@ categories = ["multimedia", "network-programming", "web-programming"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-moq-transport = "0.5"
-moq-native = "0.2"
-moq-pub = "0.6"
+moq-transport = "0.6"
+moq-native = "0.4"
+moq-pub = "0.7"
 
 gst = { package = "gstreamer", version = "0.22" }
 gst-base = { package = "gstreamer-base", version = "0.22" }

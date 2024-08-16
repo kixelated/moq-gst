@@ -21,7 +21,7 @@ jobs:
 
       # We need gstreamer installed to compile this repo
       - name: Setup GStreamer
-        uses: blinemedical/setup-gstreamer@1.0
+        uses: blinemedical/setup-gstreamer@v1
 
       # Make sure u guys don't write bad code
       - run: cargo test --verbose

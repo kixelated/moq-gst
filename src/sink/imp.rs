@@ -1,16 +1,13 @@
-use anyhow::Context;
+use anyhow::Context as _;
 use gst::glib;
 use gst::prelude::*;
 use gst::subclass::prelude::*;
 use gst_base::subclass::prelude::*;
 
-use moq_native::quic;
-use moq_native::tls;
-use moq_transport::serve::Tracks;
-use moq_transport::serve::TracksReader;
+use moq_native::{quic, tls};
 use once_cell::sync::Lazy;
+use std::sync::Arc;
 use std::sync::Mutex;
-use url::Url;
 
 pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
     tokio::runtime::Builder::new_multi_thread()
@@ -23,20 +20,21 @@ pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 #[derive(Default)]
 struct Settings {
     pub url: Option<String>,
-    pub namespace: Option<String>,
+    pub path: Vec<String>,
     pub tls_disable_verify: bool,
 }
 
 #[derive(Default)]
 struct State {
-    pub media: Option<moq_pub::Media>,
-    pub buffer: bytes::BytesMut,
+    pub media: Option<moq_karp::cmaf::Import>,
+    pub session: Option<moq_transfork::Session>,
+    pub published: bool, // true if the media has been published
 }
 
 #[derive(Default)]
 pub struct MoqSink {
     settings: Mutex<Settings>,
-    state: Mutex<State>,
+    state: Arc<Mutex<State>>,
 }
 
 #[glib::object_subclass]
@@ -58,9 +56,10 @@ impl ObjectImpl for MoqSink {
                     .nick("URL")
                     .blurb("Connect to the subscriber at the given URL")
                     .build(),
-                glib::ParamSpecString::builder("namespace")
-                    .nick("Namespace")
-                    .blurb("Publish the broadcast under the given namespace")
+                // TODO array of paths
+                glib::ParamSpecString::builder("path")
+                    .nick("Path")
+                    .blurb("Publish the broadcast under the given path")
                     .build(),
                 glib::ParamSpecBoolean::builder("tls-disable-verify")
                     .nick("TLS disable verify")
@@ -77,7 +76,7 @@ impl ObjectImpl for MoqSink {
 
         match pspec.name() {
             "url" => settings.url = Some(value.get().unwrap()),
-            "namespace" => settings.namespace = Some(value.get().unwrap()),
+            "path" => settings.path = vec![value.get().unwrap()],
             "tls-disable-verify" => settings.tls_disable_verify = value.get().unwrap(),
             _ => unimplemented!(),
         }
@@ -88,7 +87,7 @@ impl ObjectImpl for MoqSink {
 
         match pspec.name() {
             "url" => settings.url.to_value(),
-            "namespace" => settings.namespace.to_value(),
+            "path" => settings.path.to_value(),
             "tls-disable-verify" => settings.tls_disable_verify.to_value(),
             _ => unimplemented!(),
         }
@@ -143,19 +142,23 @@ impl BaseSinkImpl for MoqSink {
     }
 
     fn render(&self, buffer: &gst::Buffer) -> Result<gst::FlowSuccess, gst::FlowError> {
+        let _guard = RUNTIME.enter();
         let data = buffer.map_readable().map_err(|_| gst::FlowError::Error)?;
 
         let mut state = self.state.lock().unwrap();
-
-        let mut buffer = state.buffer.split_off(0);
-        buffer.extend_from_slice(&data);
-
-        let media = state.media.as_mut().expect("not initialized");
+        let mut media = state.media.take().expect("not initialized");
 
         // TODO avoid full media parsing? gst should be able to provide the necessary info
-        media.parse(&mut buffer).expect("failed to parse");
+        media.parse(data.as_slice()).expect("failed to parse");
 
-        state.buffer = buffer;
+        if !state.published {
+            if let Some(session) = state.session.as_mut() {
+                media.publish(session).expect("failed to publish");
+                state.published = true;
+            }
+        }
+
+        state.media = Some(media);
 
         Ok(gst::FlowSuccess::Ok)
     }
@@ -164,11 +167,10 @@ impl BaseSinkImpl for MoqSink {
 impl MoqSink {
     fn setup(&self) -> anyhow::Result<()> {
         let settings = self.settings.lock().unwrap();
-        let namespace = settings.namespace.clone().context("missing namespace")?;
-        let (writer, _, reader) = Tracks::new(namespace).produce();
+        let path = moq_transfork::Path::new(settings.path.clone());
 
-        let mut state = self.state.lock().unwrap();
-        state.media = Some(moq_pub::Media::new(writer)?);
+        let broadcast = moq_karp::produce::Resumable::new(path).broadcast();
+        let media = moq_karp::cmaf::Import::new(broadcast);
 
         let url = settings.url.clone().context("missing url")?;
         let url = url.parse().context("invalid URL")?;
@@ -182,35 +184,25 @@ impl MoqSink {
             },
         }
         .load()?;
+
         let client = quic::Endpoint::new(config)?.client;
 
-        let session = Session {
-            client,
-            url,
-            tracks: reader,
-        };
+        let mut state = self.state.lock().unwrap();
+        state.media = Some(media);
 
-        tokio::spawn(async move { session.run().await.expect("failed to run session") });
+        let state = self.state.clone();
 
-        Ok(())
-    }
-}
+        // We have to perform the connect in a background task because we can't block the main thread
+        tokio::spawn(async move {
+            let session = client.connect(&url).await.expect("failed to connect");
+            let session = moq_transfork::Session::connect(session)
+                .await
+                .expect("failed to connect");
 
-struct Session {
-    pub client: quic::Client,
-    pub url: Url,
-    pub tracks: TracksReader,
-}
+            state.lock().unwrap().session = Some(session);
 
-impl Session {
-    async fn run(self) -> anyhow::Result<()> {
-        let session = self.client.connect(&self.url).await?;
-        let (session, mut publisher) = moq_transport::session::Publisher::connect(session).await?;
-
-        tokio::select! {
-            res = publisher.announce(self.tracks) => res?,
-            res = session.run() => res?,
-        };
+            // TODO figure out how to close gstreamer gracefully on session close
+        });
 
         Ok(())
     }

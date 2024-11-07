@@ -1,17 +1,17 @@
 A gstreamer plugin utilizing [moq-rs](https://github.com/kixelated/moq-rs).
 
 # Usage
-Check out the `run` script for an example pipeline.
+Check out the `pub` script for an example pipeline.
 
 ```bash
-./run
+./pub
 ```
 
 By default this uses a localhost relay.
 You can change the ENV args if you want to make it watchable on production instead:
 
 ```bash
-ADDR=relay.quic.video NAME=something ./run
+ADDR=relay.quic.video NAME=something ./pub
 ```
 
 # License

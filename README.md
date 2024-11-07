@@ -1,4 +1,4 @@
-A gstreamer plugin utilizing [moq-rs](https://github.com/kixelated/moq-rs).
+A gstreamer plugin utilizing [moq-rs-ietf](https://github.com/englishm/moq-rs).
 
 # Usage
 Check out the `run` script for an example pipeline.

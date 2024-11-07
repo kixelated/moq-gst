@@ -23,7 +23,7 @@ URL="${URL:-"$SCHEME://$ADDR"}"
 INPUT="${INPUT:-bbb.mp4}"
 
 # Print out the watch URL
-echo "Watch URL: https://quic.video/watch/$PATH?server=$ADDR"
+echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
 # Make sure we build the gstreamer plugin
 cargo build

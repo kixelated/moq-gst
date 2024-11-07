@@ -1023,13 +1023,13 @@ name = "moq-gst"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "env_logger",
  "gst-plugin-version-helper",
  "gstreamer",
  "gstreamer-base",
  "moq-karp",
  "moq-native",
- "moq-transfork",
  "once_cell",
  "tokio",
 ]

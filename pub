@@ -29,7 +29,10 @@ echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 cargo build
 
 export GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
-#export GST_DEBUG=*:5
+
+# Some useful debugging environment variables
+# export GST_DEBUG_DUMP_DOT_DIR="${PWD}/debug"
+# export GST_DEBUG=*:5
 
 # Download the Big Buck Bunny video if it doesn't exist
 if [[ $INPUT == "bbb.mp4" && ! -f $INPUT ]]; then
@@ -39,5 +42,5 @@ fi
 
 # Run gstreamer and pipe the output to moq-pub
 gst-launch-1.0 -v -e multifilesrc location="$INPUT" loop=true ! qtdemux name=demux \
-    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" path="$NAME" \
+    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" broadcast="$NAME" \
     # demux.audio_0 ! aacparse ! queue ! mux.

@@ -20,7 +20,7 @@ pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 #[derive(Default)]
 struct Settings {
     pub url: Option<String>,
-    pub path: Vec<String>,
+    pub broadcast: String,
     pub tls_disable_verify: bool,
 }
 
@@ -57,8 +57,8 @@ impl ObjectImpl for MoqSink {
                     .blurb("Connect to the subscriber at the given URL")
                     .build(),
                 // TODO array of paths
-                glib::ParamSpecString::builder("path")
-                    .nick("Path")
+                glib::ParamSpecString::builder("broadcast")
+                    .nick("Broadcast")
                     .blurb("Publish the broadcast under the given path")
                     .build(),
                 glib::ParamSpecBoolean::builder("tls-disable-verify")
@@ -76,7 +76,7 @@ impl ObjectImpl for MoqSink {
 
         match pspec.name() {
             "url" => settings.url = Some(value.get().unwrap()),
-            "path" => settings.path = vec![value.get().unwrap()],
+            "broadcast" => settings.broadcast = value.get().unwrap(),
             "tls-disable-verify" => settings.tls_disable_verify = value.get().unwrap(),
             _ => unimplemented!(),
         }
@@ -87,7 +87,7 @@ impl ObjectImpl for MoqSink {
 
         match pspec.name() {
             "url" => settings.url.to_value(),
-            "path" => settings.path.to_value(),
+            "broadcast" => settings.broadcast.to_value(),
             "tls-disable-verify" => settings.tls_disable_verify.to_value(),
             _ => unimplemented!(),
         }
@@ -167,9 +167,9 @@ impl BaseSinkImpl for MoqSink {
 impl MoqSink {
     fn setup(&self) -> anyhow::Result<()> {
         let settings = self.settings.lock().unwrap();
-        let path = moq_transfork::Path::new(settings.path.clone());
+        let broadcast = moq_transfork::Path::default().push(&settings.broadcast);
 
-        let broadcast = moq_karp::produce::Resumable::new(path).broadcast();
+        let broadcast = moq_karp::produce::Resumable::new(broadcast).broadcast();
         let media = moq_karp::cmaf::Import::new(broadcast);
 
         let url = settings.url.clone().context("missing url")?;

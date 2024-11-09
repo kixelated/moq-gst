@@ -19,9 +19,6 @@ NAME="${NAME:-bbb}"
 # Combine the host into a URL.
 URL="${URL:-"$SCHEME://$ADDR"}"
 
-# Default to a source video
-INPUT="${INPUT:-bbb.mp4}"
-
 # Print out the watch URL
 echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
 
@@ -49,6 +46,6 @@ if [ ! -f dev/bbb.fmp4 ]; then
 fi
 
 # Run gstreamer and pipe the output to moq-pub
-gst-launch-1.0 -v -e multifilesrc location="$INPUT" loop=true ! qtdemux name=demux \
+gst-launch-1.0 -v -e multifilesrc location="dev/bbb.fmp4" loop=true ! qtdemux name=demux \
     demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" broadcast="$NAME" \
     demux.audio_0 ! aacparse ! queue ! mux.

@@ -1204,19 +1204,19 @@ dependencies = [
  "moq-transfork",
  "once_cell",
  "tokio",
+ "url",
 ]
 
 [[package]]
 name = "moq-karp"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1c84b42dbdc0414b8a22f6521bbaa0fefa4913d393206803c40991d915f9e95"
+checksum = "0dd8291f9a0c82f4356ce4f330764558eee60d68e93ee22d56cda2c153337058"
 dependencies = [
  "anyhow",
  "bytes",
  "clap",
  "derive_more",
- "futures",
  "hex",
  "lazy_static",
  "moq-native",
@@ -1234,9 +1234,9 @@ dependencies = [
 
 [[package]]
 name = "moq-native"
-version = "0.5.6"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "905cc2a2193bdbe1c48d3c8f08f7044fbb5b550d720fa7572b101afee7686bde"
+checksum = "089a2cbfca0e296f9b996e01dc2e0f91010eb00384896670a503e86a1bf54e91"
 dependencies = [
  "anyhow",
  "clap",
@@ -1258,9 +1258,9 @@ dependencies = [
 
 [[package]]
 name = "moq-transfork"
-version = "0.4.3"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7bca71d1b85893f79ffc0dd9f1f25627019879ec6ae6cff398954862859f34a"
+checksum = "a41ef6c9e82bd54628e96950928d9bd818988873b6e22903d23ce6974b5333d4"
 dependencies = [
  "bytes",
  "futures",

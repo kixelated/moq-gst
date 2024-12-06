@@ -46,6 +46,5 @@ if [ ! -f dev/bbb.fmp4 ]; then
 fi
 
 # Run gstreamer and pipe the output to moq-pub
-gst-launch-1.0 -v -e multifilesrc location="dev/bbb.fmp4" loop=true ! qtdemux name=demux \
-    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" broadcast="$NAME" \
-    demux.audio_0 ! aacparse ! queue ! mux.
+# (Room hardcoded for testing)
+gst-launch-1.0 -v -e multifilesrc location="dev/bbb.fmp4" loop=true ! qtdemux name=demux demux.video_0 ! h264parse ! queue ! identity sync=true ! mp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink server="$URL" broadcast="$NAME" room="Room2" ! demux.audio_0 ! aacparse ! queue ! mux.

@@ -22,7 +22,7 @@ pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 
 #[derive(Default, Clone)]
 struct Settings {
-	pub src: Option<String>,
+	pub url: Option<String>,
 	pub tls_disable_verify: bool,
 }
 
@@ -52,7 +52,7 @@ impl ObjectImpl for MoqSink {
 	fn properties() -> &'static [glib::ParamSpec] {
 		static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
 			vec![
-				glib::ParamSpecString::builder("src")
+				glib::ParamSpecString::builder("url")
 					.nick("Source URL")
 					.blurb("Connect to the given URL")
 					.build(),
@@ -70,7 +70,7 @@ impl ObjectImpl for MoqSink {
 		let mut settings = self.settings.lock().unwrap();
 
 		match pspec.name() {
-			"src" => settings.src = Some(value.get().unwrap()),
+			"url" => settings.url = Some(value.get().unwrap()),
 			"tls-disable-verify" => settings.tls_disable_verify = value.get().unwrap(),
 			_ => unimplemented!(),
 		}
@@ -80,7 +80,7 @@ impl ObjectImpl for MoqSink {
 		let settings = self.settings.lock().unwrap();
 
 		match pspec.name() {
-			"src" => settings.src.to_value(),
+			"url" => settings.url.to_value(),
 			"tls-disable-verify" => settings.tls_disable_verify.to_value(),
 			_ => unimplemented!(),
 		}
@@ -147,8 +147,8 @@ impl BaseSinkImpl for MoqSink {
 impl MoqSink {
 	fn setup(&self) -> anyhow::Result<()> {
 		let settings = self.settings.lock().unwrap();
-		let src = settings.src.clone().context("missing src")?;
-		let src = Url::parse(&src).context("invalid URL")?;
+		let url = settings.url.clone().context("missing url")?;
+		let url = Url::parse(&url).context("invalid URL")?;
 
 		// TODO support TLS certs and other options
 		let config = quic::Args {
@@ -162,15 +162,12 @@ impl MoqSink {
 		let client = quic::Endpoint::new(config)?.client;
 
 		RUNTIME.block_on(async move {
-			let session = client.connect(src.clone()).await.expect("failed to connect");
+			let session = client.connect(url.clone()).await.expect("failed to connect");
 			let session = moq_transfork::Session::connect(session)
 				.await
 				.expect("failed to connect");
 
-			let path = src
-				.path_segments()
-				.expect("missing path")
-				.collect::<moq_transfork::Path>();
+			let path = url.path().to_string();
 
 			let broadcast = moq_karp::BroadcastProducer::new(session, path).unwrap();
 			let media = moq_karp::cmaf::Import::new(broadcast);

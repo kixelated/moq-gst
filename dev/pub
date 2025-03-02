@@ -14,13 +14,10 @@ ADDR="${ADDR:-$HOST:$PORT}"
 SCHEME="${SCHEME:-https}"
 
 # Use the name "bbb" for the broadcast.
-NAME="${NAME:-bbb}"
+NAME="${NAME:-demo/bbb}"
 
 # Combine the host into a URL.
-URL="${URL:-"$SCHEME://$ADDR"}"
-
-# Print out the watch URL
-echo "Watch URL: https://quic.video/watch/$NAME?server=$ADDR"
+URL="${URL:-"$SCHEME://$ADDR/$NAME"}"
 
 # Make sure we build the gstreamer plugin
 cargo build
@@ -47,5 +44,5 @@ fi
 
 # Run gstreamer and pipe the output to moq-pub
 gst-launch-1.0 -v -e multifilesrc location="dev/bbb.fmp4" loop=true ! qtdemux name=demux \
-    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" broadcast="$NAME" \
+    demux.video_0 ! h264parse ! queue ! identity sync=true ! isofmp4mux name=mux chunk-duration=1 fragment-duration=1 ! moqsink url="$URL" tls-disable-verify=true \
     demux.audio_0 ! aacparse ! queue ! mux.

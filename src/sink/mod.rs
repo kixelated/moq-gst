@@ -8,6 +8,5 @@ glib::wrapper! {
 }
 
 pub fn register(plugin: &gst::Plugin) -> Result<(), glib::BoolError> {
-	env_logger::init();
 	gst::Element::register(Some(plugin), "moqsink", gst::Rank::NONE, MoqSink::static_type())
 }

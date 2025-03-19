@@ -53,7 +53,6 @@ impl ObjectSubclass for MoqSrc {
 	const NAME: &'static str = "MoqSrc";
 	type Type = super::MoqSrc;
 	type ParentType = gst::Bin;
-	type Interfaces = (gst::ChildProxy,);
 
 	fn new() -> Self {
 		Self::default()
@@ -119,7 +118,7 @@ impl ElementImpl for MoqSrc {
 	fn pad_templates() -> &'static [gst::PadTemplate] {
 		static PAD_TEMPLATES: LazyLock<Vec<gst::PadTemplate>> = LazyLock::new(|| {
 			let pad = gst::PadTemplate::new(
-				"src",
+				"src_%u",
 				gst::PadDirection::Src,
 				gst::PadPresence::Sometimes,
 				&gst::Caps::new_any(),
@@ -139,9 +138,6 @@ impl ElementImpl for MoqSrc {
 					gst::error!(CAT, obj = self.obj(), "Failed to setup: {:?}", e);
 					return Err(gst::StateChangeError);
 				}
-
-				// We downloaded the catalog and created all the pads.
-				self.obj().no_more_pads();
 			}
 
 			gst::StateChange::PausedToReady => {
@@ -154,23 +150,6 @@ impl ElementImpl for MoqSrc {
 
 		// Chain up
 		self.parent_change_state(transition)
-	}
-}
-
-impl ChildProxyImpl for MoqSrc {
-	fn children_count(&self) -> u32 {
-		let object = self.obj();
-		object.num_pads() as u32
-	}
-
-	fn child_by_name(&self, name: &str) -> Option<glib::Object> {
-		let object = self.obj();
-		object.pads().into_iter().find(|p| p.name() == name).map(|p| p.upcast())
-	}
-
-	fn child_by_index(&self, index: u32) -> Option<glib::Object> {
-		let object = self.obj();
-		object.pads().into_iter().nth(index as usize).map(|p| p.upcast())
 	}
 }
 
@@ -230,15 +209,20 @@ impl MoqSrc {
 				.format(gst::Format::Time)
 				.is_live(true)
 				.stream_type(gst_app::AppStreamType::Stream)
+				.do_timestamp(true)
 				.build();
 
 			let appsrc_pad = appsrc.static_pad("src").unwrap();
-			gst::info!(CAT, "AppSrc linked to: {:?}", appsrc_pad.peer());
 
-			let srcpad = gst::GhostPad::with_target(&appsrc_pad).unwrap();
+			let templ = self.obj().pad_template("src_%u").unwrap();
+			let srcpad = gst::GhostPad::builder_from_template(&templ)
+				.name(format!("src_{}", 0))
+				.build();
+
+			srcpad.set_target(Some(&appsrc_pad))?;
 			srcpad.set_active(true)?;
-			self.obj().add_pad(&srcpad)?;
 
+			self.obj().add_pad(&srcpad)?;
 			self.obj().add(&appsrc)?;
 
 			tokio::spawn(async move {
@@ -279,6 +263,9 @@ impl MoqSrc {
 		}
 
 		for audio in catalog.audio {}
+
+		// We downloaded the catalog and created all the pads.
+		self.obj().no_more_pads();
 
 		Ok(())
 	}

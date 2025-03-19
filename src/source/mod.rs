@@ -4,7 +4,7 @@ use gst::prelude::*;
 mod imp;
 
 glib::wrapper! {
-	pub struct MoqSrc(ObjectSubclass<imp::MoqSrc>) @extends gst::Bin, gst::Element, gst::Object, @implements gst::ChildProxy;
+	pub struct MoqSrc(ObjectSubclass<imp::MoqSrc>) @extends gst::Bin, gst::Element, gst::Object;
 }
 
 glib::wrapper! {

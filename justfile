@@ -5,7 +5,7 @@
 export RUST_BACKTRACE := "1"
 export RUST_LOG := "info"
 export URL := "http://localhost:4443"
-export GST_DEBUG := "*:4"
+export GST_DEBUG:="*:3"
 
 # List all of the available commands.
 default:
@@ -57,7 +57,7 @@ sub:
 	# Run gstreamer and pipe the output to our plugin
 	# This will render the video to the screen
 	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
-	gst-launch-1.0 -v -e moqsrc url="$URL/demo/bbb" tls-disable-verify=true ! fakesink
+	gst-launch-1.0 -v -e moqsrc url="$URL/demo/bbb" tls-disable-verify=true ! queue ! h264parse ! mp4mux ! filesink location=output.mp4
 
 # Run the CI checks
 check $RUSTFLAGS="-D warnings":

@@ -118,17 +118,15 @@ impl ElementImpl for MoqSrc {
 
 	fn pad_templates() -> &'static [gst::PadTemplate] {
 		static PAD_TEMPLATES: LazyLock<Vec<gst::PadTemplate>> = LazyLock::new(|| {
-			// Caps are restricted by the cmafmux element negotiation inside our bin element
-			let sink_pad_template = gst::PadTemplate::with_gtype(
-				"src_%u",
+			let pad = gst::PadTemplate::new(
+				"src",
 				gst::PadDirection::Src,
-				gst::PadPresence::Request,
+				gst::PadPresence::Sometimes,
 				&gst::Caps::new_any(),
-				super::MoqSrcPad::static_type(),
 			)
 			.unwrap();
 
-			vec![sink_pad_template]
+			vec![pad]
 		});
 
 		PAD_TEMPLATES.as_ref()
@@ -137,10 +135,13 @@ impl ElementImpl for MoqSrc {
 	fn change_state(&self, transition: gst::StateChange) -> Result<gst::StateChangeSuccess, gst::StateChangeError> {
 		match transition {
 			gst::StateChange::ReadyToPaused => {
-				if let Err(e) = self.setup() {
+				if let Err(e) = RUNTIME.block_on(self.setup()) {
 					gst::error!(CAT, obj = self.obj(), "Failed to setup: {:?}", e);
 					return Err(gst::StateChangeError);
 				}
+
+				// We downloaded the catalog and created all the pads.
+				self.obj().no_more_pads();
 			}
 
 			gst::StateChange::PausedToReady => {
@@ -174,7 +175,7 @@ impl ChildProxyImpl for MoqSrc {
 }
 
 impl MoqSrc {
-	fn setup(&self) -> anyhow::Result<()> {
+	async fn setup(&self) -> anyhow::Result<()> {
 		let settings = self.settings.lock().unwrap();
 		let url = url::Url::parse(&settings.url)?;
 		let path = url.path().to_string();
@@ -192,60 +193,88 @@ impl MoqSrc {
 
 		let client = quic::Endpoint::new(config)?.client;
 
-		let (broadcast, catalog) = RUNTIME.block_on(async {
-			let session = client.connect(url).await?;
-			let session = moq_transfork::Session::connect(session).await?;
-			let mut broadcast = moq_karp::BroadcastConsumer::new(session, path);
+		let session = client.connect(url).await?;
+		let session = moq_transfork::Session::connect(session).await?;
+		let mut broadcast = moq_karp::BroadcastConsumer::new(session, path);
 
-			// TODO handle catalog updates
-			let catalog = broadcast.next_catalog().await?.context("no catalog found")?.clone();
+		// TODO handle catalog updates
+		let catalog = broadcast.next_catalog().await?.context("no catalog found")?.clone();
 
-			Ok::<_, anyhow::Error>((broadcast, catalog))
-		})?;
+		gst::info!(CAT, "catalog: {:?}", catalog);
 
 		for video in catalog.video {
 			let mut track = broadcast.track(&video.track)?;
 
-			let caps = gst::Caps::builder("video")
-				.field("codec", video.codec.to_string())
-				.field("width", video.resolution.width)
-				.field("height", video.resolution.height)
+			let caps = match video.codec {
+				moq_karp::VideoCodec::H264(_) => {
+					let builder = gst::Caps::builder("video/x-h264")
+						.field("width", video.resolution.width)
+						.field("height", video.resolution.height)
+						.field("alignment", "au");
+
+					if let Some(description) = video.description {
+						builder
+							.field("stream-format", "avc")
+							.field("codec_data", gst::Buffer::from_slice(description.clone()))
+							.build()
+					} else {
+						builder.field("stream-format", "annexb").build()
+					}
+				}
+				_ => unimplemented!(),
+			};
+
+			let appsrc = gst_app::AppSrc::builder()
+				.name(&video.track.name)
+				.caps(&caps)
+				.format(gst::Format::Time)
+				.is_live(true)
+				.stream_type(gst_app::AppStreamType::Stream)
 				.build();
 
-			let appsrc = gst::ElementFactory::make("appsrc")
-				.name(&video.track.name)
-				.build()
-				.unwrap();
+			let appsrc_pad = appsrc.static_pad("src").unwrap();
+			gst::info!(CAT, "AppSrc linked to: {:?}", appsrc_pad.peer());
 
-			appsrc.set_property("format", gst::Format::Time);
-			appsrc.set_property("caps", &caps);
-			appsrc.set_property("blocksize", 4096u32);
+			let srcpad = gst::GhostPad::with_target(&appsrc_pad).unwrap();
+			srcpad.set_active(true)?;
+			self.obj().add_pad(&srcpad)?;
 
 			self.obj().add(&appsrc)?;
-
-			let srcpad = appsrc.static_pad("src").unwrap();
-			let ghostpad = gst::GhostPad::with_target(&srcpad).unwrap();
-			ghostpad.set_active(true)?;
-			self.obj().add_pad(&ghostpad)?;
 
 			tokio::spawn(async move {
 				// TODO don't panic on error
 				while let Some(frame) = track.read().await.expect("failed to read frame") {
 					// TODO
-					let buffer = gst::Buffer::from_slice(frame.payload);
-					/*
-					buffer.set_pts(Some(gst::ClockTime::from_nseconds(frame.timestamp.as_nanos() as _)));
+					let mut buffer = gst::Buffer::from_slice(frame.payload);
+					let buffer_mut = buffer.get_mut().unwrap();
 
-					let flags = buffer.flags();
+					let pts = gst::ClockTime::from_nseconds(frame.timestamp.as_nanos() as _);
+					buffer_mut.set_pts(Some(pts));
+
+					let mut flags = buffer_mut.flags();
 					if frame.keyframe {
-						buffer.set_flags(flags | gst::BufferFlags::MARKER);
+						flags.insert(gst::BufferFlags::MARKER);
 					} else {
-						buffer.set_flags(flags & !gst::BufferFlags::DELTA_UNIT);
+						flags.insert(gst::BufferFlags::DELTA_UNIT);
 					}
-					*/
+					buffer_mut.set_flags(flags);
 
-					appsrc.emit_by_name::<()>("push-buffer", &[&buffer]);
+					// Ensure appsrc has caps set
+					if appsrc.caps().is_none() {
+						gst::error!(CAT, "AppSrc missing caps!");
+						break;
+					}
+
+					let sample = gst::Sample::builder()
+						.buffer(&buffer)
+						.caps(&appsrc.caps().unwrap())
+						.build();
+					if let Err(err) = appsrc.push_sample(&sample) {
+						gst::warning!(CAT, "Failed to push sample: {:?}", err);
+					}
 				}
+
+				appsrc.end_of_stream().unwrap();
 			});
 		}
 

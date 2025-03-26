@@ -28,22 +28,6 @@ struct Settings {
 }
 
 #[derive(Default)]
-pub(crate) struct MoqSrcPad {}
-
-#[glib::object_subclass]
-impl ObjectSubclass for MoqSrcPad {
-	const NAME: &'static str = "MoqSrcPad";
-	type Type = super::MoqSrcPad;
-	type ParentType = gst::GhostPad;
-}
-
-impl ObjectImpl for MoqSrcPad {}
-impl GstObjectImpl for MoqSrcPad {}
-impl PadImpl for MoqSrcPad {}
-impl ProxyPadImpl for MoqSrcPad {}
-impl GhostPadImpl for MoqSrcPad {}
-
-#[derive(Default)]
 pub struct MoqSrc {
 	settings: Mutex<Settings>,
 }
@@ -117,15 +101,23 @@ impl ElementImpl for MoqSrc {
 
 	fn pad_templates() -> &'static [gst::PadTemplate] {
 		static PAD_TEMPLATES: LazyLock<Vec<gst::PadTemplate>> = LazyLock::new(|| {
-			let pad = gst::PadTemplate::new(
-				"src_%u",
+			let video = gst::PadTemplate::new(
+				"video_%u",
 				gst::PadDirection::Src,
 				gst::PadPresence::Sometimes,
 				&gst::Caps::new_any(),
 			)
 			.unwrap();
 
-			vec![pad]
+			let audio = gst::PadTemplate::new(
+				"audio_%u",
+				gst::PadDirection::Src,
+				gst::PadPresence::Sometimes,
+				&gst::Caps::new_any(),
+			)
+			.unwrap();
+
+			vec![video, audio]
 		});
 
 		PAD_TEMPLATES.as_ref()
@@ -157,7 +149,7 @@ impl MoqSrc {
 	async fn setup(&self) -> anyhow::Result<()> {
 		let settings = self.settings.lock().unwrap();
 		let url = url::Url::parse(&settings.url)?;
-		let path = url.path().to_string();
+		let path = url.path().strip_prefix("/").unwrap().to_string();
 
 		// TODO support TLS certs and other options
 		let config = quic::Args {
@@ -187,8 +179,8 @@ impl MoqSrc {
 			let caps = match video.codec {
 				moq_karp::VideoCodec::H264(_) => {
 					let builder = gst::Caps::builder("video/x-h264")
-						.field("width", video.resolution.width)
-						.field("height", video.resolution.height)
+						//.field("width", video.resolution.width)
+						//.field("height", video.resolution.height)
 						.field("alignment", "au");
 
 					if let Some(description) = video.description {
@@ -203,32 +195,30 @@ impl MoqSrc {
 				_ => unimplemented!(),
 			};
 
-			let appsrc = gst_app::AppSrc::builder()
-				.name(&video.track.name)
-				.caps(&caps)
-				.format(gst::Format::Time)
-				.is_live(true)
-				.stream_type(gst_app::AppStreamType::Stream)
-				.do_timestamp(true)
+			gst::info!(CAT, "caps: {:?}", caps);
+
+			let templ = self.obj().element_class().pad_template("video_%u").unwrap();
+
+			let srcpad = gst::Pad::builder_from_template(&templ).name(&video.track.name).build();
+			srcpad.set_active(true).unwrap();
+
+			let stream_start = gst::event::StreamStart::builder(&video.track.name)
+				.group_id(gst::GroupId::next())
 				.build();
+			srcpad.push_event(stream_start);
 
-			let appsrc_pad = appsrc.static_pad("src").unwrap();
+			let caps_evt = gst::event::Caps::new(&caps);
+			srcpad.push_event(caps_evt);
 
-			let templ = self.obj().pad_template("src_%u").unwrap();
-			let srcpad = gst::GhostPad::builder_from_template(&templ)
-				.name(format!("src_{}", 0))
-				.build();
+			let segment = gst::event::Segment::new(&gst::FormattedSegment::<gst::ClockTime>::new());
+			srcpad.push_event(segment);
 
-			srcpad.set_target(Some(&appsrc_pad))?;
-			srcpad.set_active(true)?;
+			self.obj().add_pad(&srcpad).expect("Failed to add pad");
 
-			self.obj().add_pad(&srcpad)?;
-			self.obj().add(&appsrc)?;
-
+			// Push to the srcpad in a background task.
 			tokio::spawn(async move {
 				// TODO don't panic on error
 				while let Some(frame) = track.read().await.expect("failed to read frame") {
-					// TODO
 					let mut buffer = gst::Buffer::from_slice(frame.payload);
 					let buffer_mut = buffer.get_mut().unwrap();
 
@@ -236,29 +226,19 @@ impl MoqSrc {
 					buffer_mut.set_pts(Some(pts));
 
 					let mut flags = buffer_mut.flags();
-					if frame.keyframe {
-						flags.insert(gst::BufferFlags::MARKER);
-					} else {
-						flags.insert(gst::BufferFlags::DELTA_UNIT);
-					}
+					match frame.keyframe {
+						true => flags.remove(gst::BufferFlags::DELTA_UNIT),
+						false => flags.insert(gst::BufferFlags::DELTA_UNIT),
+					};
+
 					buffer_mut.set_flags(flags);
 
-					// Ensure appsrc has caps set
-					if appsrc.caps().is_none() {
-						gst::error!(CAT, "AppSrc missing caps!");
-						break;
-					}
+					gst::info!(CAT, "pushing sample: {:?}", buffer);
 
-					let sample = gst::Sample::builder()
-						.buffer(&buffer)
-						.caps(&appsrc.caps().unwrap())
-						.build();
-					if let Err(err) = appsrc.push_sample(&sample) {
+					if let Err(err) = srcpad.push(buffer) {
 						gst::warning!(CAT, "Failed to push sample: {:?}", err);
 					}
 				}
-
-				appsrc.end_of_stream().unwrap();
 			});
 		}
 

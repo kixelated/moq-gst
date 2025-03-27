@@ -5,7 +5,7 @@
 export RUST_BACKTRACE := "1"
 export RUST_LOG := "info"
 export URL := "http://localhost:4443"
-export GST_DEBUG:="*:4"
+#export GST_DEBUG:="*:4"
 
 # List all of the available commands.
 default:

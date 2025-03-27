@@ -215,6 +215,8 @@ impl MoqSrc {
 
 			self.obj().add_pad(&srcpad).expect("Failed to add pad");
 
+			let mut reference = None;
+
 			// Push to the srcpad in a background task.
 			tokio::spawn(async move {
 				// TODO don't panic on error
@@ -222,7 +224,15 @@ impl MoqSrc {
 					let mut buffer = gst::Buffer::from_slice(frame.payload);
 					let buffer_mut = buffer.get_mut().unwrap();
 
-					let pts = gst::ClockTime::from_nseconds(frame.timestamp.as_nanos() as _);
+					// Make the timestamps relative to the first frame
+					let timestamp = if let Some(reference) = reference {
+						frame.timestamp - reference
+					} else {
+						reference = Some(frame.timestamp);
+						frame.timestamp
+					};
+
+					let pts = gst::ClockTime::from_nseconds(timestamp.as_nanos() as _);
 					buffer_mut.set_pts(Some(pts));
 
 					let mut flags = buffer_mut.flags();

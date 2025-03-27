@@ -1,9 +1,13 @@
 use gst::glib;
 
 mod sink;
+mod source;
 
 pub fn plugin_init(plugin: &gst::Plugin) -> Result<(), glib::BoolError> {
+	env_logger::init();
 	sink::register(plugin)?;
+	source::register(plugin)?;
+
 	Ok(())
 }
 

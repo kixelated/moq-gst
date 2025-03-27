@@ -94,7 +94,7 @@ impl ElementImpl for MoqSink {
 		static ELEMENT_METADATA: Lazy<gst::subclass::ElementMetadata> = Lazy::new(|| {
 			gst::subclass::ElementMetadata::new(
 				"MoQ Sink",
-				"Sink",
+				"Sink/Network/MoQ",
 				"Transmits media over the network via MoQ",
 				"Luke Curley <kixelated@gmail.com>",
 			)

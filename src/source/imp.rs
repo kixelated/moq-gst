@@ -147,22 +147,25 @@ impl ElementImpl for MoqSrc {
 
 impl MoqSrc {
 	async fn setup(&self) -> anyhow::Result<()> {
-		let settings = self.settings.lock().unwrap();
-		let url = url::Url::parse(&settings.url)?;
-		let path = url.path().strip_prefix("/").unwrap().to_string();
+		let (quic, url, path) = {
+			let settings = self.settings.lock().unwrap();
+			let url = url::Url::parse(&settings.url)?;
+			let path = url.path().strip_prefix("/").unwrap().to_string();
 
-		// TODO support TLS certs and other options
-		let config = quic::Args {
-			bind: "[::]:0".parse().unwrap(),
-			tls: tls::Args {
-				disable_verify: settings.tls_disable_verify,
-				..Default::default()
-			},
-		}
-		.load()?;
-		drop(settings);
+			// TODO support TLS certs and other options
+			let quic = quic::Args {
+				bind: "[::]:0".parse().unwrap(),
+				tls: tls::Args {
+					disable_verify: settings.tls_disable_verify,
+					..Default::default()
+				},
+			};
 
-		let client = quic::Endpoint::new(config)?.client;
+			(quic, url, path)
+		};
+
+		let quic = quic.load()?;
+		let client = quic::Endpoint::new(quic)?.client;
 
 		let session = client.connect(url).await?;
 		let session = moq_transfork::Session::connect(session).await?;

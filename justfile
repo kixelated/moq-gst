@@ -57,7 +57,7 @@ sub:
 	# Run gstreamer and pipe the output to our plugin
 	# This will render the video to the screen
 	GST_PLUGIN_PATH="${PWD}/target/debug${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}" \
-	gst-launch-1.0 -v -e moqsrc url="$URL/demo/bbb" tls-disable-verify=true ! decodebin ! videoconvert ! autovideosink #mp4mux fragment-duration=100 streamable=true ! filesink location=output.mp4
+	gst-launch-1.0 -v -e moqsrc url="$URL/demo/bbb" tls-disable-verify=true ! decodebin ! videoconvert ! autovideosink
 
 # Run the CI checks
 check $RUSTFLAGS="-D warnings":

@@ -167,7 +167,7 @@ impl MoqSink {
 				.await
 				.expect("failed to connect");
 
-			let path = url.path().strip_prefix("/").unwrap().to_string();
+			let path = url.path().strip_prefix('/').unwrap().to_string();
 
 			let broadcast = moq_karp::BroadcastProducer::new(session, path).unwrap();
 			let media = moq_karp::cmaf::Import::new(broadcast);
